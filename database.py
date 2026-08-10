@@ -32,6 +32,7 @@ def create_table():
     connection.commit()
     connection.close()
 
+
 def insert_event(event):
     connection = get_connection()
 
@@ -66,16 +67,12 @@ def get_events(
     device_id: str | None = None,
     severity: str | None = None,
     event_type: str | None = None,
-    from_: datetime | None = None, 
+    from_: datetime | None = None,
     to: datetime | None = None,
     page: int = 1,
     page_size: int = 20,
 ):
-
-
     connection = get_connection()
-
-    
 
     query = """
         SELECT id, device_id, event_type, severity, timestamp, metadata
@@ -117,30 +114,28 @@ def get_events(
     rows = connection.execute(
         query,
         [*parameters, page_size, offset],
-    ).fetchall() 
+    ).fetchall()
 
     connection.close()
 
     events = [
         {
             **dict(row),
-            "metadata": json.loads(row["metadata"])
-            if row["metadata"] is not None
-            else None,
+            "metadata": (
+                json.loads(row["metadata"])
+                if row["metadata"] is not None
+                else None
+            ),
         }
         for row in rows
     ]
 
-
-    return [
-        {
-            **dict(row),
-            "metadata": json.loads(row["metadata"])
-            if row["metadata"] is not None
-            else None,
-        }
-        for row in rows
-    ]
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "events": events,
+    }
 
 
 def get_event_summary(from_: datetime, to: datetime):
@@ -191,7 +186,11 @@ def get_event_summary(from_: datetime, to: datetime):
 
     connection.close()
 
-    by_severity = {"low": 0, "medium": 0, "high": 0}
+    by_severity = {
+        "low": 0,
+        "medium": 0,
+        "high": 0,
+    }
     by_severity.update(
         {row["severity"]: row["event_count"] for row in severity_rows}
     )
