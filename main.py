@@ -1,11 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from database import create_table, get_events, insert_event
+from database import create_table, get_events, insert_event, get_event_summary
 from schemas import EventCreate, EventType, Severity
 
 from typing import Annotated
@@ -73,3 +73,16 @@ def read_events(
         page=page,
         page_size=page_size,
     )
+
+@app.get("/events/summary")
+def read_event_summary(
+    from_: Annotated[datetime, Query(alias="from")],
+    to: datetime,
+):
+    if from_ > to:
+        raise HTTPException(
+            status_code=400,
+            detail="'from' must be earlier than or equal to 'to'",
+        )
+
+    return get_event_summary(from_=from_, to=to)

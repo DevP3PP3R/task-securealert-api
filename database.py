@@ -71,6 +71,8 @@ def get_events(
     page: int = 1,
     page_size: int = 20,
 ):
+
+
     connection = get_connection()
 
     
@@ -139,3 +141,82 @@ def get_events(
         }
         for row in rows
     ]
+
+
+def get_event_summary(from_: datetime, to: datetime):
+    connection = get_connection()
+
+    date_condition = """
+        WHERE julianday(timestamp) >= julianday(?)
+        AND julianday(timestamp) <= julianday(?)
+    """
+    parameters = [from_.isoformat(), to.isoformat()]
+
+    total_events = connection.execute(
+        f"SELECT COUNT(*) FROM events {date_condition}",
+        parameters,
+    ).fetchone()[0]
+
+    severity_rows = connection.execute(
+        f"""
+        SELECT severity, COUNT(*) AS event_count
+        FROM events
+        {date_condition}
+        GROUP BY severity
+        """,
+        parameters,
+    ).fetchall()
+
+    event_type_rows = connection.execute(
+        f"""
+        SELECT event_type, COUNT(*) AS event_count
+        FROM events
+        {date_condition}
+        GROUP BY event_type
+        """,
+        parameters,
+    ).fetchall()
+
+    most_active_row = connection.execute(
+        f"""
+        SELECT device_id, COUNT(*) AS event_count
+        FROM events
+        {date_condition}
+        GROUP BY device_id
+        ORDER BY event_count DESC, device_id ASC
+        LIMIT 1
+        """,
+        parameters,
+    ).fetchone()
+
+    connection.close()
+
+    by_severity = {"low": 0, "medium": 0, "high": 0}
+    by_severity.update(
+        {row["severity"]: row["event_count"] for row in severity_rows}
+    )
+
+    by_event_type = {
+        "motion_detected": 0,
+        "intrusion_alert": 0,
+        "camera_offline": 0,
+    }
+    by_event_type.update(
+        {row["event_type"]: row["event_count"] for row in event_type_rows}
+    )
+
+    return {
+        "total_events": total_events,
+        "by_severity": by_severity,
+        "by_event_type": by_event_type,
+        "most_active_device": (
+            most_active_row["device_id"]
+            if most_active_row is not None
+            else None
+        ),
+        "high_severity_rate": (
+            round(by_severity["high"] / total_events, 3)
+            if total_events > 0
+            else 0.0
+        ),
+    }
