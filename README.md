@@ -279,7 +279,7 @@ This implementation is designed for a single process. Restarting the server clea
 - Every valid `POST /events` request is treated as a new event. Because no source event ID or idempotency key is provided, retransmitting the same event may create a duplicate record.
 - Because the request body must be validated before the `device_id` can be identified, malformed requests return HTTP 400 and do not count toward the per-device rate limit.
 - An allowed request is recorded by the rate limiter before the database write. If persistence later fails, the request still counts toward the current 60-second window.
-- For event list queries, `from` and `to` are independent optional filters. Passing them in reverse order returns an empty list because no events match both conditions. The summary endpoint requires both values and rejects a reversed range with HTTP 400.
+- For event list queries, `from` and `to` are independent optional filters. If both are provided, `from` must be earlier than or equal to `to`; otherwise, the API returns HTTP 400.
 - Authentication, authorization, and event update and deletion operations are outside the current scope.
 
 ## Error Handling
@@ -289,7 +289,7 @@ This implementation is designed for a single process. Restarting the server clea
 | Event created successfully | `201` |
 | Events or summary retrieved successfully | `200` |
 | Missing required fields or invalid body/query values | `400` |
-| `from` is later than `to` in the summary endpoint | `400` |
+| `from` is later than `to` in a time-range request | `400` |
 | Per-device event creation rate limit exceeded | `429` |
 | Unhandled server or database error | `500` |
 
