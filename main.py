@@ -41,6 +41,28 @@ async def validation_exception_handler(
         content=jsonable_encoder({"detail": exc.errors()}),
     )
 
+def validate_time_range(
+    from_: datetime | None,
+    to: datetime | None,
+):
+    if from_ is None or to is None:
+        return
+
+    if (from_.utcoffset() is None) != (to.utcoffset() is None):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "'from' and 'to' must both include a timezone "
+                "or both omit it"
+            ),
+        )
+
+    if from_ > to:
+        raise HTTPException(
+            status_code=400,
+            detail="'from' must be earlier than or equal to 'to'",
+        )
+
 
 @app.get("/")
 def read_root():
@@ -57,7 +79,7 @@ def create_event(event: EventCreate):
                 "Maximum is 100 requests per minute."
             ),
         )
-        
+
     event_id = insert_event(event)
 
     return {
@@ -81,6 +103,8 @@ def read_events(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
+    validate_time_range(from_, to)
+
     return get_events(
         device_id=device_id,
         severity=severity,
@@ -96,10 +120,6 @@ def read_event_summary(
     from_: Annotated[datetime, Query(alias="from")],
     to: datetime,
 ):
-    if from_ > to:
-        raise HTTPException(
-            status_code=400,
-            detail="'from' must be earlier than or equal to 'to'",
-        )
+    validate_time_range(from_, to)
 
     return get_event_summary(from_=from_, to=to)

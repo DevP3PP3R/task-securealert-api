@@ -202,3 +202,37 @@ def test_post_events_rate_limit_by_device(tmp_path, monkeypatch):
         current_time[0] = 60.0
         expired_window_response = client.post("/events", json=event)
         assert expired_window_response.status_code == 201
+
+
+def test_invalid_datetime_inputs_return_400(tmp_path, monkeypatch):
+    test_database = tmp_path / "test_datetime_validation.db"
+
+    monkeypatch.setattr(
+        database,
+        "DATABASE_NAME",
+        str(test_database),
+    )
+
+    with TestClient(app) as client:
+        numeric_timestamp_response = client.post(
+            "/events",
+            json={
+                "device_id": "cam-test-01",
+                "event_type": "motion_detected",
+                "severity": "low",
+                "timestamp": 1700000000,
+                "metadata": None,
+            },
+        )
+
+        assert numeric_timestamp_response.status_code == 400
+
+        mixed_timezone_response = client.get(
+            "/events/summary",
+            params={
+                "from": "2024-11-15T00:00:00Z",
+                "to": "2024-11-16T00:00:00",
+            },
+        )
+
+        assert mixed_timezone_response.status_code == 400
