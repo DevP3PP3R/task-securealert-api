@@ -12,6 +12,8 @@ from typing import Annotated
 
 from datetime import datetime
 
+from rate_limiter import DeviceRateLimiter
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,6 +24,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SecureAlert API",
     lifespan=lifespan,
+)
+
+event_rate_limiter = DeviceRateLimiter(
+    limit=100,
+    window_seconds=60,
 )
 
 @app.exception_handler(RequestValidationError)
@@ -41,6 +48,16 @@ def read_root():
 
 @app.post("/events", status_code=201)
 def create_event(event: EventCreate):
+
+    if not event_rate_limiter.allow_request(event.device_id):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded for device '{event.device_id}'. "
+                "Maximum is 100 requests per minute."
+            ),
+        )
+        
     event_id = insert_event(event)
 
     return {

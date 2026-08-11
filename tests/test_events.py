@@ -1,8 +1,10 @@
 import database
+import main
 from fastapi.testclient import TestClient
 
 from main import app
 
+from rate_limiter import DeviceRateLimiter
 
 def test_event_api_workflow_with_isolated_database(tmp_path, monkeypatch):
     test_database = tmp_path / "test_securealert.db"
@@ -143,3 +145,60 @@ def test_event_api_workflow_with_isolated_database(tmp_path, monkeypatch):
             "most_active_device": "cam-south-02",
             "high_severity_rate": 0.25,
         }
+
+def test_post_events_rate_limit_by_device(tmp_path, monkeypatch):
+    test_database = tmp_path / "test_rate_limit.db"
+    current_time = [0.0]
+
+    monkeypatch.setattr(
+        database,
+        "DATABASE_NAME",
+        str(test_database),
+    )
+    monkeypatch.setattr(
+        main,
+        "event_rate_limiter",
+        DeviceRateLimiter(
+            limit=100,
+            window_seconds=60,
+            clock=lambda: current_time[0],
+        ),
+    )
+
+    event = {
+        "device_id": "cam-rate-limit-01",
+        "event_type": "motion_detected",
+        "severity": "low",
+        "timestamp": "2024-11-15T03:22:10Z",
+        "metadata": None,
+    }
+
+    with TestClient(app) as client:
+        for _ in range(100):
+            response = client.post("/events", json=event)
+            assert response.status_code == 201, response.text
+
+        rate_limited_response = client.post("/events", json=event)
+
+        assert rate_limited_response.status_code == 429
+        assert rate_limited_response.json() == {
+            "detail": (
+                "Rate limit exceeded for device 'cam-rate-limit-01'. "
+                "Maximum is 100 requests per minute."
+            ),
+        }
+
+        # A different device has its own rate limit.
+        other_device_response = client.post(
+            "/events",
+            json={
+                **event,
+                "device_id": "cam-rate-limit-02",
+            },
+        )
+        assert other_device_response.status_code == 201
+
+        # Requests are allowed again after the 60-second window expires.
+        current_time[0] = 60.0
+        expired_window_response = client.post("/events", json=event)
+        assert expired_window_response.status_code == 201
